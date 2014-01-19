@@ -25,6 +25,7 @@ def Exercise(nit):
   dx = 2.0/float(nit)
   while (i<nit):
     name = str(i)
+    sys.stderr.write('render %s... '%(name))
     testing.render(name)
     sys.stderr.write('removeScalar %s '%(name))
     testing.removeScalar(name)
@@ -36,7 +37,7 @@ def Finalize():
   testing.finalize()
 
 if __name__ == "__main__":
-  nit = 100 # number of times to render
+  nit = 50 # number of times to render
   nval = 300 # number of points
 
   Initialize(nval, nit)

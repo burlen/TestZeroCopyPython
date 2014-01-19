@@ -120,26 +120,26 @@ void render(const char *name)
 static
 void decref(void *key)
 {
-  PyArrayObject *arr = reinterpret_cast<PyArrayObject*>(key);
-  Py_DECREF(arr);
-  fprintf(stderr, "Py_DECREF(%p)\n", arr);
+  PyArrayObject *nda = reinterpret_cast<PyArrayObject*>(key);
+  Py_DECREF(nda);
+  fprintf(stderr, "Py_DECREF(%p)\n", nda);
 }
 
 // --------------------------------------------------------------------------
 // get a pointer to numpy data
 static
-bool getPointer(PyObject *seq, double *&data, int &size)
+bool getPointer(PyObject *obj, double *&data, int &size)
 {
-   PyArrayObject *arr = reinterpret_cast<PyArrayObject*>(seq);
-   if (!PyArray_Check(seq)
-    || (PyArray_TYPE(arr) != NPY_FLOAT64)
-    || !(PyArray_IS_C_CONTIGUOUS(arr) || PyArray_IS_F_CONTIGUOUS(arr))
-    || ((size = PyArray_SIZE(arr)) < 1) )
+   PyArrayObject *nda = reinterpret_cast<PyArrayObject*>(obj);
+   if (!PyArray_Check(obj)
+    || (PyArray_TYPE(nda) != NPY_FLOAT64)
+    || !(PyArray_IS_C_CONTIGUOUS(nda) || PyArray_IS_F_CONTIGUOUS(nda))
+    || ((size = PyArray_SIZE(nda)) < 1) )
     {
     return false;
     }
   // get a pointer to the data
-  data = static_cast<double*>(PyArray_DATA(arr));
+  data = static_cast<double*>(PyArray_DATA(nda));
   return true;
 }
 
@@ -147,10 +147,11 @@ bool getPointer(PyObject *seq, double *&data, int &size)
 extern "C"
 PyObject *setPoints(PyObject *self, PyObject *args)
 {
+  (void)self;
   Py_INCREF(Py_None);
 
-  PyObject *seq = NULL;
-  if ( !PyArg_ParseTuple(args, "O", &seq) )
+  PyObject *obj = NULL;
+  if ( !PyArg_ParseTuple(args, "O", &obj) )
     {
     return Py_None;
     }
@@ -158,7 +159,7 @@ PyObject *setPoints(PyObject *self, PyObject *args)
   // get a pointer to the data
   double *data;
   int size = 0;
-  if (!getPointer(seq, data, size))
+  if (!getPointer(obj, data, size))
     {
     PyErr_SetString(PyExc_RuntimeError, "failed to get a pointer to the data");
     return Py_None;
@@ -166,16 +167,16 @@ PyObject *setPoints(PyObject *self, PyObject *args)
 
   // increment the array's ref count so it won't be deleted
   // while VTK needs the data.
-  PyArrayObject *arr = reinterpret_cast<PyArrayObject*>(seq);
-  Py_INCREF(arr);
-  fprintf(stderr, "setPoints : Py_INCREF(%p)\n", arr);
+  PyArrayObject *nda = reinterpret_cast<PyArrayObject*>(obj);
+  Py_INCREF(nda);
+  fprintf(stderr, "setPoints : Py_INCREF(%p)\n", nda);
 
   // pass it to VTK with the call back that will decrement
   // the array's ref count when VTK is done with the data.
   vtkPoints *points = vtkPoints::New();
   points->SetDataType(VTK_DOUBLE);
   vtkDoubleArray *pts = vtkDoubleArray::SafeDownCast(points->GetData());
-  pts->SetArray(data, size, decref, static_cast<void*>(seq));
+  pts->SetArray(data, size, decref, static_cast<void*>(nda));
   internal::Data->SetPoints(points);
   points->Delete();
 
@@ -198,11 +199,12 @@ PyObject *setPoints(PyObject *self, PyObject *args)
 extern "C"
 PyObject *addScalar(PyObject *self, PyObject *args)
 {
+  (void)self;
   Py_INCREF(Py_None);
 
-  PyObject *seq = NULL;
+  PyObject *obj = NULL;
   const char *name = NULL;
-  if ( !PyArg_ParseTuple(args, "Os", &seq, &name) )
+  if ( !PyArg_ParseTuple(args, "Os", &obj, &name) )
     {
     return Py_None;
     }
@@ -210,7 +212,7 @@ PyObject *addScalar(PyObject *self, PyObject *args)
   // get a pointer to the data
   double *data;
   int size = 0;
-  if (!getPointer(seq, data, size))
+  if (!getPointer(obj, data, size))
     {
     PyErr_SetString(PyExc_RuntimeError, "failed to get a pointer to the data");
     return Py_None;
@@ -218,14 +220,15 @@ PyObject *addScalar(PyObject *self, PyObject *args)
 
   // increment the array's ref count so it won't be deleted
   // while VTK needs the data.
-  Py_INCREF(seq);
-  fprintf(stderr, "addScalar %s Py_INCREF(%p)\n", name, seq);
+  PyArrayObject *nda = reinterpret_cast<PyArrayObject*>(obj);
+  Py_INCREF(nda);
+  fprintf(stderr, "addScalar %s Py_INCREF(%p)\n", name, nda);
 
   // pass it to VTK with the call back that will decrement
   // the array's ref count when VTK is done with the data.
   vtkDoubleArray *array = vtkDoubleArray::New();
   array->SetName(name);
-  array->SetArray(data, size, decref, static_cast<void*>(seq));
+  array->SetArray(data, size, decref, static_cast<void*>(nda));
   internal::Data->GetPointData()->AddArray(array);
   array->Delete();
 
