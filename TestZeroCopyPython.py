@@ -11,7 +11,7 @@ def Initialize(nval, nit):
   testing.setPoints(pts)
 
   # add scalars
-  dx = 2.0/float(nit)
+  dx = 2.0/float(nit-1)
   i = 0
   while i<nit:
     s = (-1.0+i*dx) * np.ones((nval,))
@@ -27,13 +27,13 @@ def Exercise(nit):
     name = str(i)
     sys.stderr.write('render %s... '%(name))
     testing.render(name)
-    sys.stderr.write('removeScalar %s '%(name))
+    sys.stderr.write('removeScalar %s... '%(name))
     testing.removeScalar(name)
     i += 1
 
 def Finalize():
   """Free the dataset"""
-  sys.stderr.write('deleteing the dataset : ')
+  sys.stderr.write('cleaning up... ')
   testing.finalize()
 
 if __name__ == "__main__":

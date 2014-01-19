@@ -66,16 +66,13 @@ void render(const char *name)
   vtkGlyph3D *filter = vtkGlyph3D::New();
   filter->SetInputData(internal::Data);
   filter->SetSourceConnection(ss->GetOutputPort());
+  ss->Delete();
   filter->SetScaleFactor(0.125);
   filter->ScalingOff();
-/*
-  vtkVertexGlyphFilter *filter = vtkVertexGlyphFilter::New();
-  filter->SetInputData(internal::Data);
-  filter->SetInputArrayToProcess(0,0,0,vtkDataObject::FIELD_ASSOCIATION_POINTS,name);
-*/
 
   vtkPolyDataMapper *mapper = vtkPolyDataMapper::New();
   mapper->SetInputConnection(filter->GetOutputPort());
+  filter->Delete();
 
   vtkColorTransferFunction *lut = vtkColorTransferFunction::New();
   lut->SetColorSpaceToRGB();
@@ -99,19 +96,10 @@ void render(const char *name)
   renderer->AddActor(actor);
   actor->Delete();
 
-  //vtkRenderWindowInteractor *iren = vtkRenderWindowInteractor::New();
-  //iren->SetRenderWindow(internal::Window);
-
   renderer->ResetCamera();
   internal::Window->Render();
 
-  //iren->Start();
-
   renderer->RemoveActor(actor);
-  filter->Delete();
-  ss->Delete();
-
-  //iren->Delete();
 }
 
 // --------------------------------------------------------------------------
