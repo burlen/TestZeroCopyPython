@@ -18,6 +18,8 @@
 #include <vtkGlyph3D.h>
 #include <vtkSphereSource.h>
 #include <vtkCellArray.h>
+#include <vtkObjectFactory.h>
+#include <vtkDataArrayDeleteCallback.h>
 
 namespace internal
 {
@@ -105,13 +107,36 @@ void render(const char *name)
 // --------------------------------------------------------------------------
 // memory management callback
 // vtkDataArray calls this when VTK no longer needs data we gave it
-static
-void decref(void *key)
+class vtkPyArrayDeleteCallback : public vtkDataArrayDeleteCallback
 {
-  PyArrayObject *nda = reinterpret_cast<PyArrayObject*>(key);
-  Py_DECREF(nda);
-  fprintf(stderr, "Py_DECREF(%p)\n", nda);
-}
+public:
+  static vtkPyArrayDeleteCallback *New();
+
+  // this takes a reference to the passed
+  // object.
+  void SetArray(PyArrayObject *array)
+    {
+    this->Array = array;
+    Py_INCREF(this->Array);
+    fprintf(stderr, "Py_INCREF(%p)\n", this->Array);
+    }
+
+  // this releases the reference.
+  virtual void Invoke()
+    {
+    Py_DECREF(this->Array);
+    fprintf(stderr, "Py_DECREF(%p)\n", this->Array);
+    }
+protected:
+  vtkPyArrayDeleteCallback() : Array(NULL) {}
+  virtual ~vtkPyArrayDeleteCallback() {}
+
+private:
+  PyArrayObject *Array;
+  vtkPyArrayDeleteCallback(const vtkPyArrayDeleteCallback&);  // Not implemented.
+  void operator=(const vtkPyArrayDeleteCallback&);  // Not implemented.
+};
+vtkStandardNewMacro(vtkPyArrayDeleteCallback);
 
 // --------------------------------------------------------------------------
 // get a pointer to numpy data
@@ -153,18 +178,19 @@ PyObject *setPoints(PyObject *self, PyObject *args)
     return Py_None;
     }
 
-  // increment the array's ref count so it won't be deleted
-  // while VTK needs the data.
   PyArrayObject *nda = reinterpret_cast<PyArrayObject*>(obj);
-  Py_INCREF(nda);
-  fprintf(stderr, "setPoints : Py_INCREF(%p)\n", nda);
+
+  // hold a reference to the numpy object while VTK is using it.
+  vtkPyArrayDeleteCallback *dcb = vtkPyArrayDeleteCallback::New();
+  dcb->SetArray(nda);
 
   // pass it to VTK with the call back that will decrement
   // the array's ref count when VTK is done with the data.
   vtkPoints *points = vtkPoints::New();
   points->SetDataType(VTK_DOUBLE);
   vtkDoubleArray *pts = vtkDoubleArray::SafeDownCast(points->GetData());
-  pts->SetArray(data, size, decref, static_cast<void*>(nda));
+  pts->SetArray(data, size, dcb);
+  dcb->Delete();
   internal::Data->SetPoints(points);
   points->Delete();
 
@@ -206,17 +232,18 @@ PyObject *addScalar(PyObject *self, PyObject *args)
     return Py_None;
     }
 
-  // increment the array's ref count so it won't be deleted
-  // while VTK needs the data.
   PyArrayObject *nda = reinterpret_cast<PyArrayObject*>(obj);
-  Py_INCREF(nda);
-  fprintf(stderr, "addScalar %s Py_INCREF(%p)\n", name, nda);
+
+  // hold a reference to the numpy object while VTK is using it.
+  vtkPyArrayDeleteCallback *dcb = vtkPyArrayDeleteCallback::New();
+  dcb->SetArray(nda);
 
   // pass it to VTK with the call back that will decrement
   // the array's ref count when VTK is done with the data.
   vtkDoubleArray *array = vtkDoubleArray::New();
   array->SetName(name);
-  array->SetArray(data, size, decref, static_cast<void*>(nda));
+  array->SetArray(data, size, dcb);
+  dcb->Delete();
   internal::Data->GetPointData()->AddArray(array);
   array->Delete();
 
