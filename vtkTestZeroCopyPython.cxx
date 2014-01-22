@@ -19,7 +19,7 @@
 #include <vtkSphereSource.h>
 #include <vtkCellArray.h>
 #include <vtkObjectFactory.h>
-#include <vtkDataArrayDeleteCallback.h>
+#include <vtkCommand.h>
 
 namespace internal
 {
@@ -86,7 +86,7 @@ void render(const char *name)
   mapper->SetScalarModeToUsePointData();
   mapper->SetScalarVisibility(1);
   mapper->SelectColorArray(name);
-  mapper->SetUseLookupTableScalarRange(1);
+  mapper->SetUseLookupTableScalarRange(0);
   mapper->SetScalarMode(VTK_SCALAR_MODE_USE_POINT_FIELD_DATA);
   lut->Delete();
 
@@ -107,36 +107,42 @@ void render(const char *name)
 // --------------------------------------------------------------------------
 // memory management callback
 // vtkDataArray calls this when VTK no longer needs data we gave it
-class vtkPyArrayDeleteCallback : public vtkDataArrayDeleteCallback
+class vtkPyArrayDeleteCallback : public vtkCommand
 {
 public:
-  static vtkPyArrayDeleteCallback *New();
+  static vtkPyArrayDeleteCallback *New()
+    { return new vtkPyArrayDeleteCallback; }
 
-  // this takes a reference to the passed
-  // object.
-  void SetArray(PyArrayObject *array)
+  // take a reference to the passed py array. install vtk
+  // callback that will release the reference when VTK no
+  // longer needs the data.
+  void ObservePointerFreeEvent(vtkDataArray *vtkarray, PyArrayObject *pyarray)
     {
-    this->Array = array;
-    Py_INCREF(this->Array);
-    fprintf(stderr, "Py_INCREF(%p)\n", this->Array);
+    this->Id = vtkarray->AddObserver(vtkCommand::PointerFreeEvent, this);
+    this->PyArray = pyarray;
+    Py_INCREF(this->PyArray);
+    fprintf(stderr, "Py_INCREF(%p)\n", this->PyArray);
     }
 
-  // this releases the reference.
-  virtual void Invoke()
+  // override the execute method. The reference to teh py array
+  // is released and the callbac is removed, and delete'd.
+  virtual void Execute(vtkObject *vtkarray, unsigned long, void *)
     {
-    Py_DECREF(this->Array);
-    fprintf(stderr, "Py_DECREF(%p)\n", this->Array);
+    Py_DECREF(this->PyArray);
+    fprintf(stderr, "Py_DECREF(%p)\n", this->PyArray);
+    vtkarray->RemoveObserver(this->Id);
+    this->UnRegister();
     }
 protected:
-  vtkPyArrayDeleteCallback() : Array(NULL) {}
+  vtkPyArrayDeleteCallback() : PyArray(NULL), Id(0) {}
   virtual ~vtkPyArrayDeleteCallback() {}
 
 private:
-  PyArrayObject *Array;
+  PyArrayObject *PyArray;
+  unsigned long Id;
   vtkPyArrayDeleteCallback(const vtkPyArrayDeleteCallback&);  // Not implemented.
   void operator=(const vtkPyArrayDeleteCallback&);  // Not implemented.
 };
-vtkStandardNewMacro(vtkPyArrayDeleteCallback);
 
 // --------------------------------------------------------------------------
 // get a pointer to numpy data
@@ -178,19 +184,18 @@ PyObject *setPoints(PyObject *self, PyObject *args)
     return Py_None;
     }
 
-  PyArrayObject *nda = reinterpret_cast<PyArrayObject*>(obj);
-
-  // hold a reference to the numpy object while VTK is using it.
-  vtkPyArrayDeleteCallback *dcb = vtkPyArrayDeleteCallback::New();
-  dcb->SetArray(nda);
-
   // pass it to VTK with the call back that will decrement
   // the array's ref count when VTK is done with the data.
   vtkPoints *points = vtkPoints::New();
   points->SetDataType(VTK_DOUBLE);
   vtkDoubleArray *pts = vtkDoubleArray::SafeDownCast(points->GetData());
-  pts->SetArray(data, size, dcb);
-  dcb->Delete();
+  pts->SetArray(data, size, 0, vtkDoubleArray::VTK_DATA_ARRAY_CALLBACK);
+
+  // hold a reference to the numpy object while VTK is using it.
+  // note: it delete's itself after respoding to the event.
+  vtkPyArrayDeleteCallback *cb = vtkPyArrayDeleteCallback::New();
+  cb->ObservePointerFreeEvent(pts, reinterpret_cast<PyArrayObject*>(obj));
+
   internal::Data->SetPoints(points);
   points->Delete();
 
@@ -232,18 +237,17 @@ PyObject *addScalar(PyObject *self, PyObject *args)
     return Py_None;
     }
 
-  PyArrayObject *nda = reinterpret_cast<PyArrayObject*>(obj);
-
-  // hold a reference to the numpy object while VTK is using it.
-  vtkPyArrayDeleteCallback *dcb = vtkPyArrayDeleteCallback::New();
-  dcb->SetArray(nda);
-
   // pass it to VTK with the call back that will decrement
   // the array's ref count when VTK is done with the data.
   vtkDoubleArray *array = vtkDoubleArray::New();
   array->SetName(name);
-  array->SetArray(data, size, dcb);
-  dcb->Delete();
+  array->SetArray(data, size, 0, vtkDoubleArray::VTK_DATA_ARRAY_CALLBACK);
+
+  // hold a reference to the numpy object while VTK is using it.
+  // note: it delete's itself after respoding to the event.
+  vtkPyArrayDeleteCallback *cb = vtkPyArrayDeleteCallback::New();
+  cb->ObservePointerFreeEvent(array, reinterpret_cast<PyArrayObject*>(obj));
+
   internal::Data->GetPointData()->AddArray(array);
   array->Delete();
 
