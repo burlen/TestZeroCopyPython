@@ -107,16 +107,16 @@ void render(const char *name)
 // --------------------------------------------------------------------------
 // memory management callback
 // vtkDataArray calls this when VTK no longer needs data we gave it
-class vtkPyArrayDeleteCallback : public vtkCommand
+class vtkPointerFreeEventObserver : public vtkCommand
 {
 public:
-  static vtkPyArrayDeleteCallback *New()
-    { return new vtkPyArrayDeleteCallback; }
+  static vtkPointerFreeEventObserver *New()
+    { return new vtkPointerFreeEventObserver; }
 
   // take a reference to the passed py array. install vtk
   // callback that will release the reference when VTK no
   // longer needs the data.
-  void ObservePointerFreeEvent(vtkDataArray *vtkarray, PyArrayObject *pyarray)
+  void Observe(vtkDataArray *vtkarray, PyArrayObject *pyarray)
     {
     this->Id = vtkarray->AddObserver(vtkCommand::PointerFreeEvent, this);
     this->PyArray = pyarray;
@@ -134,14 +134,14 @@ public:
     this->UnRegister();
     }
 protected:
-  vtkPyArrayDeleteCallback() : PyArray(NULL), Id(0) {}
-  virtual ~vtkPyArrayDeleteCallback() {}
+  vtkPointerFreeEventObserver() : PyArray(NULL), Id(0) {}
+  virtual ~vtkPointerFreeEventObserver() {}
 
 private:
   PyArrayObject *PyArray;
   unsigned long Id;
-  vtkPyArrayDeleteCallback(const vtkPyArrayDeleteCallback&);  // Not implemented.
-  void operator=(const vtkPyArrayDeleteCallback&);  // Not implemented.
+  vtkPointerFreeEventObserver(const vtkPointerFreeEventObserver&);  // Not implemented.
+  void operator=(const vtkPointerFreeEventObserver&);  // Not implemented.
 };
 
 // --------------------------------------------------------------------------
@@ -193,8 +193,8 @@ PyObject *setPoints(PyObject *self, PyObject *args)
 
   // hold a reference to the numpy object while VTK is using it.
   // note: it delete's itself after respoding to the event.
-  vtkPyArrayDeleteCallback *cb = vtkPyArrayDeleteCallback::New();
-  cb->ObservePointerFreeEvent(pts, reinterpret_cast<PyArrayObject*>(obj));
+  vtkPointerFreeEventObserver *cb = vtkPointerFreeEventObserver::New();
+  cb->Observe(pts, reinterpret_cast<PyArrayObject*>(obj));
 
   internal::Data->SetPoints(points);
   points->Delete();
@@ -245,8 +245,8 @@ PyObject *addScalar(PyObject *self, PyObject *args)
 
   // hold a reference to the numpy object while VTK is using it.
   // note: it delete's itself after respoding to the event.
-  vtkPyArrayDeleteCallback *cb = vtkPyArrayDeleteCallback::New();
-  cb->ObservePointerFreeEvent(array, reinterpret_cast<PyArrayObject*>(obj));
+  vtkPointerFreeEventObserver *cb = vtkPointerFreeEventObserver::New();
+  cb->Observe(array, reinterpret_cast<PyArrayObject*>(obj));
 
   internal::Data->GetPointData()->AddArray(array);
   array->Delete();
